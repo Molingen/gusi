@@ -2,3 +2,6 @@ cmake-build-debug
 CMakeLists.txt
 main.cpp
 .idea/
+a.out
+.clang-format
+.vscode

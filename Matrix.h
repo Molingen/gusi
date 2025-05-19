@@ -8,8 +8,6 @@ public:
     explicit Matrix(const std::vector<std::vector<double>> &input);
     Matrix(size_t r, size_t c);
 
-    std::pair<size_t, std::vector<int>> reduce();
-
     void print() const {
         for (const auto& row : vec) {
             for (const double val : row) {

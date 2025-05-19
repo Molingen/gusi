@@ -1,4 +1,5 @@
 #include "GaussSolver.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -6,65 +7,121 @@ std::vector<Vector> GaussSolver::solve(const Matrix& A, const Vector& b) {
     size_t n = A.getRows();
     size_t m = A.getCols();
 
-    Matrix Ab(n, m + 1);
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < m; ++j) {
-            Ab(i, j) = A(i, j);
-        }
-        Ab(i, m) = b[i];
+    Matrix A_copy = A;
+    Vector b_copy = b;
+
+    std::vector<int> pivot(m, -1);
+    std::vector<int> col_permutation(m);
+    for (int i = 0; i < m; ++i) {
+        col_permutation[i] = i;
     }
 
-    auto [rank, pivot] = Ab.reduce();
+    int rank = 0;
+    for (int i = 0; i < std::min(n, m); i++) {
+        double maxEl = 0.0;
+        int maxRow = i, maxCol = i;
+        for (int k = i; k < n; k++) {
+            for (int l = i; l < m; l++) {
+                if (std::abs(A_copy(k, l)) > maxEl) {
+                    maxEl = std::abs(A_copy(k, l));
+                    maxRow = k;
+                    maxCol = l;
+                }
+            }
+        }
 
-    for (size_t i = rank; i < n; ++i) {
-        if (std::abs(Ab(i, m)) > 1e-10) {
+        if (maxEl == 0) {
+            break;
+        }
+
+        if (maxRow != i) {
+            for (int k = 0; k < m; k++) {
+                std::swap(A_copy(i, k), A_copy(maxRow, k));
+            }
+            std::swap(b_copy[i], b_copy[maxRow]);
+        }
+        if (maxCol != i) {
+            for (int k = 0; k < n; k++) {
+                std::swap(A_copy(k, i), A_copy(k, maxCol));
+            }
+            std::swap(col_permutation[i], col_permutation[maxCol]);
+            std::swap(pivot[i], pivot[maxCol]);
+        }
+
+        pivot[i] = i;
+        rank++;
+
+        for (int k = i + 1; k < n; k++) {
+            double c = -A_copy(k, i) / A_copy(i, i);
+            for (int j = i; j < m; j++) {
+                A_copy(k, j) += c * A_copy(i, j);
+            }
+            b_copy[k] += c * b_copy[i];
+        }
+    }
+
+    for (int i = rank; i < n; i++) {
+        if (fabs(b_copy[i]) > 1e-10) {
             return {};
-        }
-    }
-
-    Matrix A_reduced(n, m);
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < m; ++j) {
-            A_reduced(i, j) = Ab(i, j);
         }
     }
 
     if (rank < m) {
         std::vector<Vector> solutions;
-
-        Vector p_solution(m);
-        for (int i = rank - 1; i >= 0; --i) {
+        Vector particular_solution(m);
+        for (int i = rank - 1; i >= 0; i--) {
             double sum = 0.0;
-            for (size_t j = i + 1; j < m; ++j) {
-                sum += A_reduced(i, j) * p_solution[j];
+            for (int j = i + 1; j < m; j++) {
+                sum += A_copy(i, j) * particular_solution[j];
             }
-            p_solution[pivot[i]] = (Ab(i, m) - sum) / A_reduced(i, i);
+            particular_solution[pivot[i]] = (b_copy[i] - sum) / A_copy(i, i);
         }
-        solutions.push_back(p_solution);
 
-        for (size_t free_var = 0; free_var < m; ++free_var) {
-            if (std::find(pivot.begin(), pivot.end(), free_var) == pivot.end()) {
+        Vector permuted_particular_solution(m);
+        for (int i = 0; i < m; ++i) {
+            permuted_particular_solution[col_permutation[i]] =
+                particular_solution[i];
+        }
+        solutions.push_back(permuted_particular_solution);
+
+        for (int free_var = 0; free_var < m; free_var++) {
+            if (std::find(pivot.begin(), pivot.end(), free_var) ==
+                pivot.end()) {
                 Vector basis(m);
                 basis[free_var] = 1;
-                for (int i = rank - 1; i >= 0; --i) {
+                for (int i = rank - 1; i >= 0; i--) {
                     double sum = 0.0;
-                    for (size_t j = i + 1; j < m; ++j) {
-                        sum += A_reduced(i, j) * basis[j];
+                    for (int j = i + 1; j < m; j++) {
+                        sum += A_copy(i, j) * basis[j];
                     }
-                    basis[pivot[i]] = -sum / A_reduced(i, i);
+                    basis[pivot[i]] = (0 - sum) / A_copy(i, i);
                 }
-                solutions.push_back(basis);
+
+                Vector permuted_basis(m);
+                for (int i = 0; i < m; ++i) {
+                    permuted_basis[col_permutation[i]] = basis[i];
+                }
+                solutions.push_back(permuted_basis);
             }
         }
+
         return solutions;
-    }
-    Vector x(m);
-    for (int i = rank - 1; i >= 0; --i) {
-        double sum = 0.0;
-        for (size_t j = i + 1; j < m; ++j) {
-            sum += A_reduced(i, j) * x[j];
+    } else {
+        Vector x(m);
+        for (int i = m - 1; i >= 0; i--) {
+            double sum = 0.0;
+            for (int j = i + 1; j < m; j++) {
+                sum += A_copy(i, j) * x[j];
+            }
+            x[pivot[i]] = (b_copy[i] - sum) / A_copy(i, i);
         }
-        x[pivot[i]] = (Ab(i, m) - sum) / A_reduced(i, i);
+
+        Vector result(m);
+        for (int i = 0; i < m; ++i) {
+            result[col_permutation[i]] = x[i];
+        }
+
+        return {result};
     }
-    return {x};
 }
+
